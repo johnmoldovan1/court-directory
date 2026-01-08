@@ -147,7 +147,84 @@
 
   <footer>© 2025 The Law Offices of John Moldovan, Esq. LLC. All rights reserved.</footer>
 
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const CSV_URL = "./Court%20Info%20Final.csv";
+  const tbody = document.querySelector("#court-table tbody");
+  const search = document.getElementById("courtSearch");
+
+  function esc(v){
+    return String(v ?? "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;");
+  }
+
+  function parseCSV(text){
+    const rows = [];
+    let row = [], cell = "", inQ = false;
+    for (let i=0;i<text.length;i++){
+      const c = text[i], n = text[i+1];
+      if (c === '"'){
+        if (inQ && n === '"'){ cell += '"'; i++; }
+        else inQ = !inQ;
+      } else if (c === "," && !inQ){
+        row.push(cell); cell = "";
+      } else if ((c === "\n" || c === "\r") && !inQ){
+        if (c === "\r" && n === "\n") i++;
+        row.push(cell); cell = "";
+        if (row.some(x => x !== "")) rows.push(row);
+        row = [];
+      } else {
+        cell += c;
+      }
+    }
+    row.push(cell);
+    if (row.some(x => x !== "")) rows.push(row);
+    return rows;
+  }
+
+  const resp = await fetch(CSV_URL, { cache: "no-store" });
+  if (!resp.ok){
+    tbody.innerHTML = "<tr><td colspan='7'>CSV not found</td></tr>";
+    return;
+  }
+
+  const text = await resp.text();
+  const rows = parseCSV(text);
+  const headers = rows[0].map(h => h.trim());
+  const data = rows.slice(1).map(r => {
+    const o = {};
+    headers.forEach((h,i) => o[h] = (r[i] ?? "").trim());
+    return o;
+  });
+
+  function render(list){
+    tbody.innerHTML = list.map(r => `
+      <tr>
+        <td>${esc(r["COURT NAME"] || "")}</td>
+        <td>${esc(r["ADDRESS"] || "")}</td>
+        <td>${esc(r["PHONE"] || "")}</td>
+        <td>${esc(r["FAX"] || "")}</td>
+        <td>${esc(r["JUDGE"] || "")}</td>
+        <td>${esc(r["CT ADMIN"] || "")}</td>
+        <td>${esc(r["COUNTY"] || "")}</td>
+      </tr>
+    `).join("");
+  }
+
+  render(data);
+
+  if (search){
+    search.addEventListener("input", e => {
+      const q = e.target.value.toLowerCase();
+      render(data.filter(row =>
+        Object.values(row).some(v => String(v).toLowerCase().includes(q))
+      ));
+    });
+  }
+});
+</script>
   <script>
     // IMPORTANT: Use the RAW githubusercontent URL, not github.com/.../blob/...
     const CSV_URL = "./Court%20Info%20Final.csv";
