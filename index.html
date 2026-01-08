@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>New Jersey Municipal Court Directory</title>
+
+  <style>
+    :root{
+      --border:#d0d7de;
+      --bg:#ffffff;
+      --muted:#57606a;
+      --header:#f6f8fa;
+      --rowAlt:#fbfcfe;
+      --text:#24292f;
+      --focus:#0969da;
+    }
+    body{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      margin: 24px;
+      color: var(--text);
+      background: var(--bg);
+    }
+    h1{
+      margin: 0 0 12px 0;
+      font-size: 22px;
+      font-weight: 650;
+      letter-spacing: 0.2px;
+    }
+    .sub{
+      margin: 0 0 16px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .toolbar{
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    #courtSearch{
+      padding: 10px 12px;
+      width: 100%;
+      max-width: 520px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+      outline: none;
+    }
+    #courtSearch:focus{
+      border-color: var(--focus);
+      box-shadow: 0 0 0 3px rgba(9,105,218,0.15);
+    }
+    .meta{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .scroll{
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: auto;
+      max-height: 70vh;
+    }
+    table{
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px; /* allows horizontal scroll on smaller screens */
+    }
+    thead th{
+      position: sticky;
+      top: 0;
+      background: var(--header);
+      z-index: 2;
+      text-align: left;
+      font-size: 12px;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody td{
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      font-size: 13px;
+    }
+    tbody tr:nth-child(even){
+      background: var(--rowAlt);
+    }
+    .status{
+      margin: 10px 0 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .error{
+      color: #b42318;
+    }
+    footer{
+      margin-top: 18px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .pill{
+      display: inline-block;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--header);
+      font-size: 12px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+
+<body>
+  <h1>New Jersey Municipal Court Directory</h1>
+  <p class="sub">Search across court name, address, phone, fax, judge, administrator, and county.</p>
+
+  <div class="toolbar">
+    <input id="courtSearch" type="text" placeholder="Search courts…" autocomplete="off" />
+    <span id="rowCount" class="pill">Loading…</span>
+  </div>
+
+  <div class="scroll" tabindex="0" aria-label="Court directory table scroll area">
+    <table id="court-table" aria-label="Court directory table">
+      <thead>
+        <tr>
+          <th>Court Name</th>
+          <th>Address</th>
+          <th>Phone</th>
+          <th>Fax</th>
+          <th>Judge</th>
+          <th>Court Admin</th>
+          <th>County</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="7">Loading directory…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p id="status" class="status"></p>
+
+  <footer>© 2025 The Law Offices of John Moldovan, Esq. LLC. All rights reserved.</footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+    // IMPORTANT: Use the RAW githubusercontent URL, not github.com/.../blob/...
+    const CSV_URL = "const CSV_URL = "./Court%20Info%20Final.csv";
+
+    const tbody = document.querySelector("#court-table tbody");
+    const statusEl = document.getElementById("status");
+    const rowCountEl = document.getElementById("rowCount");
+    const searchEl = document.getElementById("courtSearch");
+
+    let allRows = [];
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function normalizeRow(r){
+      // Map CSV headers to expected fields. Adjust here if your CSV uses different headers.
+      return {
+        court: r["COURT NAME"] ?? r["Court Name"] ?? r["court"] ?? "",
+        address: r["ADDRESS"] ?? r["Address"] ?? r["address"] ?? "",
+        phone: r["PHONE"] ?? r["Phone"] ?? r["phone"] ?? "",
+        fax: r["FAX"] ?? r["Fax"] ?? r["fax"] ?? "",
+        judge: r["JUDGE"] ?? r["Judge"] ?? r["judge"] ?? "",
+        admin: r["CT ADMIN"] ?? r["Court Admin"] ?? r["CTADMIN"] ?? r["admin"] ?? "",
+        county: r["COUNTY"] ?? r["County"] ?? r["county"] ?? ""
+      };
+    }
+
+    function render(rows){
+      if (!rows.length){
+        tbody.innerHTML = '<tr><td colspan="7">No results.</td></tr>';
+        rowCountEl.textContent = "0 courts";
+        return;
+      }
+
+      const html = rows.map(r => {
+        return `
+          <tr>
+            <td>${escapeHtml(r.court)}</td>
+            <td>${escapeHtml(r.address)}</td>
+            <td>${escapeHtml(r.phone)}</td>
+            <td>${escapeHtml(r.fax)}</td>
+            <td>${escapeHtml(r.judge)}</td>
+            <td>${escapeHtml(r.admin)}</td>
+            <td>${escapeHtml(r.county)}</td>
+          </tr>
+        `;
+      }).join("");
+
+      tbody.innerHTML = html;
+      rowCountEl.textContent = rows.length + (rows.length === 1 ? " court" : " courts");
+    }
+
+    function setStatus(msg, isError=false){
+      statusEl.textContent = msg || "";
+      statusEl.className = "status" + (isError ? " error" : "");
+    }
+
+    async function loadCsv(){
+      setStatus("Loading CSV…");
+      rowCountEl.textContent = "Loading…";
+
+      try{
+        const resp = await fetch(CSV_URL, { cache: "no-store" });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const text = await resp.text();
+
+        const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+        if (parsed.errors && parsed.errors.length){
+          // Keep going but show a warning
+          setStatus("Loaded with parsing warnings. If rows look odd, confirm the CSV formatting.", true);
+        } else {
+          setStatus("");
+        }
+
+        allRows = (parsed.data || []).map(normalizeRow);
+
+        // If CSV returned HTML (wrong URL), PapaParse will still “parse” something.
+        // Quick sanity check: require at least some non-empty court names.
+        const nonEmpty = allRows.filter(r => (r.court || "").trim().length > 0);
+        if (nonEmpty.length < 5){
+          throw new Error("CSV did not load correctly. Check that CSV_URL is a raw CSV file, not an HTML page.");
+        }
+
+        allRows = nonEmpty;
+        render(allRows);
+
+      } catch (err){
+        tbody.innerHTML = '<tr><td colspan="7">Directory temporarily unavailable.</td></tr>';
+        rowCountEl.textContent = "Unavailable";
+        setStatus(String(err && err.message ? err.message : err), true);
+      }
+    }
+
+    function filterRows(query){
+      const q = (query || "").trim().toLowerCase();
+      if (!q) return allRows;
+
+      return allRows.filter(r => {
+        return Object.values(r).some(val => String(val || "").toLowerCase().includes(q));
+      });
+    }
+
+    searchEl.addEventListener("input", (e) => {
+      render(filterRows(e.target.value));
+    });
+
+    loadCsv();
+  </script>
+</body>
+</html>
